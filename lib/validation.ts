@@ -4,7 +4,7 @@ import { questions, questionById, SURVEY_VERSION, type Answers } from './survey-
 const answerSchema = z.object({ values: z.array(z.string().max(80)).max(20).optional(), other: z.string().trim().max(500).optional(), text: z.string().trim().max(4000).optional() }).strict();
 export function validateAnswers(answers: Answers, complete: boolean) {
   const errors: Record<string, string> = {};
-  for (const id of Object.keys(answers)) if (!questionById[id]) errors[id] = 'Unknown question.';
+  for (const id of Object.keys(answers)) if (!Object.hasOwn(questionById, id)) errors[id] = 'Unknown question.';
   for (const q of questions) {
     const a = answers[q.id];
     if (!a) { if (complete && q.required) errors[q.id] = 'Please answer this question.'; continue; }

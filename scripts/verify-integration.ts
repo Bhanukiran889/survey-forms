@@ -1,7 +1,7 @@
 // Opt-in integration verification. Only a newly generated disposable database is dropped.
 import { MongoClient } from 'mongodb';
-import { randomBytes, scrypt } from 'node:crypto';
-import { promisify } from 'node:util';
+import { randomBytes } from 'node:crypto';
+import { hashPassword } from '../lib/password';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { questions, SURVEY_VERSION } from '../lib/survey-schema';
 import assert from 'node:assert/strict';
@@ -17,8 +17,8 @@ function cookieOf(response: Response, name: string) { return response.headers.ge
 async function main() {
  if (!uri || !/^recallmd_test_[a-f0-9]{16}$/.test(testName) || testName === configuredName) throw new Error('Integration isolation check failed.');
  client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000 }); await client.connect();
- const db = client.db(testName); const salt=randomBytes(16).toString('hex'); const key=await promisify(scrypt)(password,salt,64) as Buffer; const now=new Date();
- await db.collection('admin_users').insertOne({email:'integration@example.invalid',passwordHash:`scrypt:${salt}:${key.toString('hex')}`,role:'admin',active:true,createdAt:now,updatedAt:now});
+ const db = client.db(testName); const passwordHash = await hashPassword(password); const now=new Date();
+ await db.collection('admin_users').insertOne({email:'integration@example.invalid',passwordHash,role:'admin',active:true,createdAt:now,updatedAt:now});
  server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(port)],{cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',MONGODB_URI:uri,MONGODB_DB_NAME:testName,AUTH_SECRET:randomBytes(48).toString('base64url'),APP_URL:origin,NEXT_DIST_DIR:'.next-integration'},stdio:['ignore','pipe','pipe']});
  // Do not relay framework/driver logs, which may include hostnames or env paths.
  server.stdout?.resume();server.stderr?.resume();

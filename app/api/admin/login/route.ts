@@ -7,7 +7,7 @@ import { createSession, destroySession } from '@/lib/auth';
 import type { AdminUser } from '@/models/admin-user';
 export const runtime = 'nodejs';
 // Perform a real scrypt operation even for an unknown account.
-const dummyHash = 'scrypt:00000000000000000000000000000000:' + '0'.repeat(128);
+const dummyHash = 'scrypt:131072:8:1:00000000000000000000000000000000:' + '0'.repeat(128);
 export const POST = route(async request => {
   assertSameOrigin(request); const data = await readJson(request, loginSchema);
   await rateLimit('login-global', 'all', 200); await rateLimit('login-email', data.email, 10);

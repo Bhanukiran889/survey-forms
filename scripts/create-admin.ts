@@ -1,6 +1,5 @@
 import { MongoClient } from 'mongodb';
-import { randomBytes, scrypt } from 'node:crypto';
-import { promisify } from 'node:util';
+import { hashPassword } from '../lib/password';
 import { z } from 'zod';
 const schema = z.object({ MONGODB_URI: z.string().regex(/^mongodb(?:\+srv)?:\/\//), MONGODB_DB_NAME: z.string().regex(/^[a-zA-Z0-9_-]+$/).default('neetpg_research'), ADMIN_EMAIL: z.email().transform(v => v.toLowerCase()), ADMIN_PASSWORD: z.string().min(16).max(256), AUTH_SECRET: z.string().min(32) });
 async function main() {
@@ -11,8 +10,8 @@ async function main() {
   await client.connect(); const collection = client.db(env.MONGODB_DB_NAME).collection('admin_users');
   await collection.createIndex({ email: 1 }, { unique: true });
   if (await collection.findOne({ email: env.ADMIN_EMAIL })) { console.log('Administrator already exists. No credentials were changed.'); return; }
-  const salt = randomBytes(16).toString('hex'); const hash = await promisify(scrypt)(env.ADMIN_PASSWORD, salt, 64) as Buffer; const now = new Date();
-  await collection.insertOne({ email: env.ADMIN_EMAIL, passwordHash: `scrypt:${salt}:${hash.toString('hex')}`, role: 'admin', active: true, createdAt: now, updatedAt: now });
+  const passwordHash = await hashPassword(env.ADMIN_PASSWORD); const now = new Date();
+  await collection.insertOne({ email: env.ADMIN_EMAIL, passwordHash, role: 'admin', active: true, createdAt: now, updatedAt: now });
   console.log('Administrator created. Remove ADMIN_PASSWORD from .env.local after provisioning.');
  } finally { await client.close(); }
 }

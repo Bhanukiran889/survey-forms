@@ -32,7 +32,12 @@ export async function saveDraft(data: { responses: Submission['responses']; curr
   const db = await getDb(); const drafts = db.collection<SurveyDraft>('survey_drafts');
   const previous = await drafts.findOne({ anonymousSessionId: credential.id });
   if (previous?.submittedAt) throw new HttpError(409, 'ALREADY_SUBMITTED', 'This survey has already been submitted.');
-  await drafts.updateOne({ anonymousSessionId: credential.id, credentialHash: credential.credentialHash }, { $set: { ...data, updatedAt: now, expiresAt: new Date(Date.now() + DRAFT_RETENTION_DAYS * 86400000) }, $setOnInsert: { anonymousSessionId: credential.id, credentialHash: credential.credentialHash, createdAt: now } }, { upsert: true });
+  try {
+    await drafts.updateOne({ anonymousSessionId: credential.id, credentialHash: credential.credentialHash, submittedAt: { $exists: false } }, { $set: { ...data, updatedAt: now, expiresAt: new Date(Date.now() + DRAFT_RETENTION_DAYS * 86400000) }, $setOnInsert: { anonymousSessionId: credential.id, credentialHash: credential.credentialHash, createdAt: now } }, { upsert: true });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) throw new HttpError(409, 'ALREADY_SUBMITTED', 'This survey has already been submitted or is no longer editable.');
+    throw error;
+  }
   return { id: credential.id, savedAt: now.toISOString(), expiresInDays: DRAFT_RETENTION_DAYS };
 }
 export async function submitSurvey(data: Submission) {
