@@ -1,0 +1,10 @@
+'use client';
+import { useState } from 'react';
+import { CheckCircle2, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { api, errorMessage } from '@/lib/client-api';
+export function WithdrawalForm() {
+ const [error, setError] = useState(''), [busy, setBusy] = useState(false), [done, setDone] = useState(false), [confirm, setConfirm] = useState(false);
+ if (done) return <div className="notice notice-success" role="status"><CheckCircle2 size={20}/><div><strong>Your response has been deleted.</strong><p>It is no longer available in the research database or live dashboard.</p></div></div>;
+ return <form className="withdrawal-form" onSubmit={async event => { event.preventDefault(); setError(''); if (!confirm) { setConfirm(true); return; } setBusy(true); const data = new FormData(event.currentTarget); try { await api('/api/survey/withdraw', { method: 'POST', body: JSON.stringify({ receipt: data.get('receipt'), key: data.get('key') }) }); setDone(true); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } }}><span className="area-icon"><ShieldCheck size={23}/></span><h2>Withdraw your response</h2><p>Use the details you saved after submitting. Deletion is permanent.</p><label className="field-label" htmlFor="receipt">Response reference</label><input className="input" name="receipt" id="receipt" required placeholder="Your response reference" maxLength={36}/><label className="field-label" htmlFor="withdrawal-key">Private withdrawal key</label><input className="input" name="key" id="withdrawal-key" required placeholder="64-character withdrawal key" maxLength={64} autoComplete="off"/>{error && <p className="form-error" role="alert">{error}</p>}{confirm && <p className="form-error" role="alert">This permanently deletes your response. Select “Confirm deletion” to continue.</p>}<Button variant="destructive" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16}/> : null}{confirm ? 'Confirm deletion' : 'Delete my response'}</Button></form>;
+}

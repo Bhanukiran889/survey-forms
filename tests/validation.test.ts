@@ -1,0 +1,17 @@
+import { describe, it, expect } from 'vitest';
+import { draftSchema, submissionSchema } from '@/lib/validation';
+import { questions, sections, SURVEY_VERSION } from '@/lib/survey-schema';
+import { validSubmission } from './fixtures';
+describe('the survey contract', () => {
+ it('contains all 28 questions in six sections, with stable unique IDs', () => { expect(questions).toHaveLength(28); expect(sections).toHaveLength(6); expect(new Set(questions.map(q => q.id)).size).toBe(28); });
+ it('accepts a complete valid submission', () => expect(submissionSchema.safeParse(validSubmission()).success).toBe(true));
+ it('rejects multiple selections on a single-select question', () => { const s = validSubmission(); s.responses.q1.values = ['q1_a1','q1_a2']; expect(submissionSchema.safeParse(s).success).toBe(false); });
+ it('accepts multiple valid selections on a multi-select question', () => { const s = validSubmission(); s.responses.q8.values = ['q8_a1','q8_a2']; expect(submissionSchema.safeParse(s).success).toBe(true); });
+ it('enforces the three-feature selection limit on drafts and submissions', () => { const s = validSubmission(); s.responses.q21.values = ['q21_a1','q21_a2','q21_a3','q21_a4']; expect(submissionSchema.safeParse(s).success).toBe(false); expect(draftSchema.safeParse({ ...s, currentSection: 4 }).success).toBe(false); });
+ it('rejects unknown question IDs and answer values', () => { const s = validSubmission(); s.responses.q29 = { values: ['oops'] }; expect(submissionSchema.safeParse(s).success).toBe(false); delete s.responses.q29; s.responses.q1.values = ['q1_a99']; expect(submissionSchema.safeParse(s).success).toBe(false); });
+ it('rejects a missing consent field but permits an explicitly unchecked optional checkbox', () => { const s = { ...validSubmission() } as Partial<ReturnType<typeof validSubmission>>; delete s.consent; expect(submissionSchema.safeParse(s).success).toBe(false); expect(submissionSchema.safeParse({ ...s, consent: false }).success).toBe(true); });
+ it('requires all closed questions but keeps written feedback optional', () => { const s = validSubmission(); delete s.responses.q3; expect(submissionSchema.safeParse(s).success).toBe(false); expect(submissionSchema.safeParse(validSubmission()).success).toBe(true); });
+ it('requires and validates Other text only when Other is selected', () => { const s = validSubmission(); s.responses.q1 = { values: ['q1_a5'] }; expect(submissionSchema.safeParse(s).success).toBe(false); s.responses.q1.other = 'Research year'; expect(submissionSchema.safeParse(s).success).toBe(true); s.responses.q1.values = ['q1_a1']; expect(submissionSchema.safeParse(s).success).toBe(false); });
+ it('rejects duplicate values, exclusive combinations and excessive text', () => { const s = validSubmission(); s.responses.q7.values = ['q7_a1','q7_a1']; expect(submissionSchema.safeParse(s).success).toBe(false); s.responses.q7.values = ['q7_a1','q7_a8']; expect(submissionSchema.safeParse(s).success).toBe(false); s.responses.q7.values = ['q7_a1']; s.responses.q9 = { text: 'x'.repeat(4001) }; expect(submissionSchema.safeParse(s).success).toBe(false); });
+ it('allows incomplete drafts but rejects unknown fields and versions', () => { const s = { surveyVersion: SURVEY_VERSION, responses: {}, currentSection: 0, consent: false }; expect(draftSchema.safeParse(s).success).toBe(true); expect(draftSchema.safeParse({ ...s, surveyVersion: '2' }).success).toBe(false); expect(draftSchema.safeParse({ ...s, ip: '1.2.3.4' }).success).toBe(false); });
+});
