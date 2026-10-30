@@ -180,7 +180,7 @@ body{font-size:16px;line-height:1.65;color:#172b3a}.container{width:calc(100% - 
   .hero-offer-icon { width: 30px; height: 30px; }
   .hero-offer-icon svg { width: 20px; height: 20px; }
   .hero-unified .hero-actions { gap: 13px; }
-  .hero-unified .hero-visual { height: 355px; }
+  .hero-unified .hero-visual { height: auto; min-height: 480px; padding-block: 12px; }
   .hero-unified .research-card { width: 280px; max-width: 90%; }
   .hero-unified .research-card h2 { font-size: 21px; }
   .hero-unified .float-top { left: 0; font-size: 8px; }
@@ -194,4 +194,34 @@ body{font-size:16px;line-height:1.65;color:#172b3a}.container{width:calc(100% - 
   .hero.hero-unified h1 { font-size: 35px; }
   .hero-offer { display: block; }
   .hero-offer-icon { display: none; }
+  .hero-unified .hero-visual { min-height: 500px; }
+}
+
+/* Accessibility pass: secondary text should remain readable without competing
+   with the primary question or action. */
+:root { --muted: #526779; }
+button:disabled { opacity: .72; }
+.section-list li { color: #526779; }
+.section-list .complete { color: #3f6f65; }
+.section-step-icon { border-color: #cbd5df; }
+.sidebar-title p, .sidebar-privacy { color: #526779; }
+.sidebar-privacy h3 { color: #3f665d; }
+.survey-progress-top, .survey-meta, .survey-controls > span, .survey-bottom-note { color: #526779; }
+.question-hint, .optional-tag, .character-count { color: #526779; }
+.optional-tag { border-color: #cbd5df; }
+.question-number { color: #3f6f65; }
+.option-disabled { opacity: .72; }
+.input::placeholder { color: #64748b; opacity: 1; }
+.review-section dt, .consent-card p, .success-note, .receipt-box > span { color: #526779; }
+.research-card > p, .diagram-labels { color: #526779; }
+.research-card-bottom { color: #526779; }
+.trust-strip p > span, .public-footer { color: #526779; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
 }
