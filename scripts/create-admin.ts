@@ -1,3 +1,4 @@
+import './load-env';
 import { MongoClient } from 'mongodb';
 import { hashPassword } from '../lib/password';
 import { z } from 'zod';

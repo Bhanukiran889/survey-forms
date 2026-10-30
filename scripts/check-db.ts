@@ -1,3 +1,4 @@
+import './load-env';
 import { MongoClient } from 'mongodb';
 async function main() {
  if (!process.env.MONGODB_URI?.match(/^mongodb(?:\+srv)?:\/\//)) throw new Error('Missing URI');

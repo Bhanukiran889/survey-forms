@@ -26,9 +26,19 @@ export function validateAnswers(answers: Answers, complete: boolean) {
 }
 export const answersSchema = z.record(z.string().max(10), answerSchema);
 function refineAnswers(complete: boolean) { return (answers: Answers, ctx: z.RefinementCtx) => { for (const [id, message] of Object.entries(validateAnswers(answers, complete))) ctx.addIssue({ code: 'custom', path: [id], message }); }; }
-export const draftSchema = z.object({ surveyVersion: z.literal(SURVEY_VERSION), responses: answersSchema.superRefine(refineAnswers(false)), currentSection: z.number().int().min(0).max(6), consent: z.boolean() }).strict();
-export const submissionSchema = z.object({ surveyVersion: z.literal(SURVEY_VERSION), responses: answersSchema.superRefine(refineAnswers(true)), consent: z.boolean() }).strict();
+const extraFields = {
+ termsAccepted: z.boolean().optional(), privacyAcknowledged: z.boolean().optional(),
+ emailOptIn: z.boolean().optional(), email: z.string().trim().max(254).optional(),
+};
+export const draftSchema = z.object({ surveyVersion: z.literal(SURVEY_VERSION), responses: answersSchema.superRefine(refineAnswers(false)), currentSection: z.number().int().min(0).max(6), consent: z.boolean(), ...extraFields }).strict();
+export const submissionSchema = z.object({ surveyVersion: z.literal(SURVEY_VERSION), responses: answersSchema.superRefine(refineAnswers(true)), consent: z.boolean(), ...extraFields }).strict();
+export const finalSubmissionSchema = submissionSchema.superRefine((value,ctx)=>{
+ if(!value.termsAccepted) ctx.addIssue({code:'custom',path:['termsAccepted'],message:'Please accept the participation terms.'});
+ if(!value.privacyAcknowledged) ctx.addIssue({code:'custom',path:['privacyAcknowledged'],message:'Please confirm you have read the privacy notice.'});
+ if(value.emailOptIn && !z.email().safeParse(value.email).success) ctx.addIssue({code:'custom',path:['email'],message:'Enter an email for free subscription selection, or turn off the optional opt-in.'});
+ if(!value.emailOptIn && value.email) ctx.addIssue({code:'custom',path:['emailOptIn'],message:'Please opt in before providing an email.'});
+});
 export type Submission = z.infer<typeof submissionSchema>;
 export const loginSchema = z.object({ email: z.email().max(254).transform(v => v.toLowerCase()), password: z.string().min(1).max(256) }).strict();
-export const withdrawalSchema = z.object({ receipt: z.string().uuid(), key: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+export const withdrawalSchema = z.object({ receipt: z.string().uuid(), key: z.string().regex(/^[a-f0-9]{64}$/), action: z.enum(['response','email']).optional() }).strict();
 export const querySchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), limit: z.coerce.number().int().min(1).max(100).default(20), stage: z.string().max(80).optional(), version: z.string().max(30).optional(), search: z.string().max(100).optional(), from: z.iso.date().optional(), to: z.iso.date().optional() }).refine(v => !v.from || !v.to || v.from <= v.to, { message: 'The end date must follow the start date.' });

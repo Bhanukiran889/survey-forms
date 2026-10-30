@@ -28,7 +28,7 @@ export function handleError(error: unknown) {
   if (error instanceof HttpError) return json({ error: { code: error.code, message: error.message } }, error.status);
   if (error instanceof Error && error.message.startsWith('CONFIG_')) return json({ error: { code: 'NOT_CONFIGURED', message: 'The research service is awaiting configuration. Your answers have not been submitted. Please try again later.' } }, 503);
   if (error instanceof DatabaseUnavailable) return json({ error: { code: 'DATABASE_UNAVAILABLE', message: error.message } }, 503);
-  console.error('Research request failed', { category: 'UNEXPECTED_ERROR' });
+  console.error('Research request failed', JSON.stringify({category:'UNEXPECTED_ERROR',name:error instanceof Error?error.name.replace(/[^a-zA-Z0-9_]/g,'').slice(0,60):'Unknown',code:typeof error==='object'&&error!==null&&'code' in error&&typeof error.code==='number'?error.code:undefined,location:error instanceof Error?error.stack?.split('\n')[1]?.trim():undefined}));
   return json({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' } }, 500);
 }
 export const route = (fn: (request: Request) => Promise<Response>) => async (request: Request) => { try { return await fn(request); } catch (error) { return handleError(error); } };
