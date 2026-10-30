@@ -12,6 +12,7 @@ import { responseRetentionDays } from './env';
 import { EARLY_ACCESS_OFFER,OFFER_VERSION,POLICY_VERSION } from './privacy-schema';
 import { submissionAttribution } from './privacy-service';
 import type { Submission } from './validation';
+import type { BotVerification } from './bot-contract';
 import type { SurveyDraft } from '@/models/survey-draft';
 import type { SurveyResponse } from '@/models/survey-response';
 import type { ContactRecord,DraftContact,ConsentEvent } from '@/models/privacy';
@@ -45,7 +46,7 @@ export async function saveDraft(data:Submission&{currentSection:number}) {
   return{id:auth.id,savedAt:now.toISOString(),expiresInDays:DRAFT_RETENTION_DAYS};
  });
 }
-export async function submitSurvey(data:Submission) {
+export async function submitSurvey(data:Submission, verification?:BotVerification) {
  const auth=await draftCredential();const withdrawalKey=hashToken(`withdraw:${auth.credentialHash}:${auth.id}`);
  try{return await withDatabaseTransaction(async(db,session)=>{
   const draft=await db.collection<SurveyDraft>('survey_drafts').findOne({anonymousSessionId:auth.id,credentialHash:auth.credentialHash,expiresAt:{$gt:new Date()}},{session});
@@ -57,6 +58,7 @@ export async function submitSurvey(data:Submission) {
   const first=(id:string)=>data.responses[id]?.values?.[0]??'';
   const attribution=await submissionAttribution(db,session);
   const document:SurveyResponse={surveyVersion:SURVEY_VERSION,status:'submitted',responses:data.responses,questionSnapshot:questions,preparationStage:first('q5'),studyDuration:first('q2'),revisionMethod:data.responses.q13?.values??[],recallFrequency:first('q6'),productUsefulness:first('q20'),selectedFeatures:data.responses.q21?.values??[],consent:data.consent,termsAccepted:!!data.termsAccepted,privacyAcknowledged:!!data.privacyAcknowledged,emailOptIn:!!data.emailOptIn,policyVersion:POLICY_VERSION,consentRecordedAt:now,createdAt:draft.createdAt,updatedAt:now,submittedAt:now,expiresAt,submissionToken:auth.id,withdrawalHash:hashToken(withdrawalKey),receipt,...attribution};
+  if(verification)document.botProtection=verification;
   await responses.insertOne(document,{session});
   if(data.emailOptIn&&data.email){const email=data.email.trim().toLowerCase();await db.collection<ContactRecord>('early_access_contacts').insertOne({submissionToken:auth.id,receipt,emailCiphertext:encryptEmail(email),emailHash:emailHash(email),status:'pending_review',offerVersion:OFFER_VERSION,offerTerms:EARLY_ACCESS_OFFER,policyVersion:POLICY_VERSION,optedInAt:now,createdAt:now,updatedAt:now,expiresAt},{session});}
   await db.collection<ConsentEvent>('consent_events').insertOne({receipt,type:'survey_submission',policyVersion:POLICY_VERSION,participation:data.consent,termsAccepted:!!data.termsAccepted,privacyAcknowledged:!!data.privacyAcknowledged,emailOptIn:!!data.emailOptIn,...(data.emailOptIn?{offerVersion:OFFER_VERSION}:{}),recordedAt:now,expiresAt},{session});

@@ -1,6 +1,6 @@
 # RecallMD Research
 
-A Next.js App Router application for MBBS / NEET-PG student research, with the original 28 questions across six sections, server-side draft recovery, editable review, atomic submission, privacy preferences, optional encrypted email opt-ins, consent-gated UTM attribution, and a protected researcher workspace.
+A Next.js App Router application for MBBS / NEET-PG student research, with the original 28 questions across six sections, server-side draft recovery, editable review, atomic submission, privacy preferences, optional encrypted email opt-ins, consent-gated UTM attribution, server-enforced spam checks, and a protected researcher workspace.
 
 MongoDB Atlas is the sole persistence database. Browser cookies hold secure credentials; survey answers, emails, acknowledgements, cookie choices, selection statuses, and permitted campaign records are stored in MongoDB. There are no simulated successful writes, sample dashboard values, public administrator registration, or third-party analytics pixels.
 
@@ -60,7 +60,7 @@ The setup scripts use `@next/env`, matching the application's environment-file p
 
 | Collection | Contents | Expiration |
 | --- | --- | --- |
-| `survey_responses` | Stable Q1–Q28/answer IDs, immutable question snapshot, analytics fields, policy acknowledgements/version, optional email opt-in flag, consented attribution snapshot, timestamps, unique submission token, receipt and hashed withdrawal credential. No email address. | Configured response retention, default 365 days. |
+| `survey_responses` | Stable Q1–Q28/answer IDs, immutable question snapshot, analytics fields, policy acknowledgements/version, optional email opt-in flag, consented attribution snapshot, bot-check method/time, timestamps, unique submission token, receipt and hashed withdrawal credential. No email address. | Configured response retention, default 365 days. |
 | `survey_drafts` | Answers, section, consent/acknowledgement flags, random locator and hashed secret. No email address. | 30 days from latest save. |
 | `survey_draft_contacts` | Separately encrypted, explicitly opted-in draft email. | Same expiry as its draft; removed on opt-out or submission. |
 | `early_access_contacts` | AES-256-GCM encrypted email, keyed email hash, private response link, opt-in timestamp, exact offer version/text, notice version, selection status. | Same expiry as its response; independently removable. |
@@ -118,11 +118,31 @@ All mutations validate exact Origin against APP_URL, JSON content type, and requ
 
 Public write/authentication/export limits use shared MongoDB counters across instances. Limits do not collect IPs or device fingerprints; deployment WAF/bot protection is still needed against distributed abuse and exhaustion of a global bucket. Logs contain fixed categories, numeric error codes and code locations, never raw driver messages, full URIs, passwords or email values. Security headers include frame denial, nosniff, referrer/permissions restrictions, CSP and production HSTS. CSP retains framework-required inline support; assess nonce-based tightening separately for the deployed framework and host.
 
+## Bot protection
+
+Basic submission protection is enabled without external credentials. The review step obtains a signed, encrypted ticket bound to the current draft and its private browser credential. The server requires that ticket, an empty honeypot, and at least eight seconds since the server created the draft. Tickets expire after two hours and cannot be transferred to another draft. Exact Origin checks, bounded bodies, shared rate limits and unique submission-token indexes also apply. The result stores only `botProtection.method` and `verifiedAt` with the response, under the same retention and withdrawal behavior. Tickets, honeypot contents and provider tokens are not saved in research records.
+
+These basic checks reduce simple automated spam; a script that deliberately reproduces the form flow can still pass them. They do not prove that an answer is truthful. Researchers review response quality and subscription selection themselves.
+
+For stronger verification, create a Cloudflare Turnstile widget for the exact deployment hostname and configure **both** values in the local/deployment environment:
+
+```dotenv
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=<widget-site-key>
+TURNSTILE_SECRET_KEY=<private-widget-secret>
+```
+
+Restart development after changes and rebuild/redeploy for production. The secret stays on the server. The widget loads only on the review step when both keys are configured. CSP permits only the required verification origin. The submit endpoint calls Siteverify and checks success, the configured hostname, `survey-submit` action and the draft binding. It does not send survey answers, email addresses or a `remoteip` parameter. The provider's browser-side security processing is disclosed in the public notices. See the [official server validation guide](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/).
+
+Missing/invalid/expired tokens, wrong host/action/binding, partial configuration and provider failures are rejected. Failed checks preserve saved answers; the UI obtains a fresh check for retries. Completed-response retries return the existing receipt without inserting another response or spending the single-use provider token again. Official always-pass test keys are rejected in production. Use only separate development keys/test widgets for testing; there is no production bypass flag. No keys means basic mode, not enhanced verification. `config:check` reports the active configuration without printing keys.
+
+Use the host's WAF/abuse controls as well, especially against draft/API flooding and distributed attacks. Basic checks are not a substitute for a managed bot challenge or edge protection. The integration suite tests basic-mode enforcement against a disposable database, and unit tests exercise enhanced success/failure/host/action/binding/provider-outage behavior with a mocked provider.
+
 ## API reference
 
 - `POST /api/survey/draft`: partial answers, `currentSection` 0–6, acknowledgement and optional email fields. Sets/reuses the essential credential.
 - `GET /api/survey/draft/current` or `/[id]`: matching credential required; returns only that draft, including its opted-in email after decryption.
-- `POST /api/survey/submit`: complete validated answers plus required `termsAccepted: true`, `privacyAcknowledged: true`; optional `emailOptIn` and `email`.
+- `POST /api/survey/protection`: `{}` with the authorized draft cookie; returns the browser-bound ticket and active verification mode.
+- `POST /api/survey/submit`: complete validated answers plus required `termsAccepted: true`, `privacyAcknowledged: true`, and `protection: { ticket, website: "", turnstileToken?: string }`; optional `emailOptIn` and `email`. Enhanced mode requires the fresh widget token.
 - `POST /api/survey/withdraw`: `{ receipt, key, action: "response" | "email" }`; action defaults to full response.
 - `GET /api/privacy/preferences`: current authorized preference, or an undecided state.
 - `POST /api/privacy/preferences`: `{ analytics, policyVersion: "2026-10-30", campaign?: { source, medium, campaign, term, content } }`; campaign requires acceptance.
@@ -152,9 +172,9 @@ npm run build
 npm run test:integration
 ```
 
-Lint, tests and build must exit 0. Unit tests never connect to or delete production data. They cover the question contract, feature cap, unknown IDs, input limits, request protection, CSV injection, filters/pagination, auth, draft expiry, idempotency, empty analytics, policy acknowledgements, email opt-in/encryption/tampering, campaign filtering, consent gating, expiry and revocation.
+Lint, tests and build must exit 0. Unit tests never connect to or delete production data. They cover the question contract, feature cap, unknown IDs, input limits, request protection, CSV injection, filters/pagination, auth, draft expiry, idempotency, empty analytics, policy acknowledgements, email opt-in/encryption/tampering, campaign filtering, consent gating, expiry and revocation, and bot-ticket/session/timing/provider enforcement.
 
-The optional integration suite uses a new `recallmd_test_<random>` Atlas database, a temporary localhost server on port 3101, and a disposable fake administrator/contact. It verifies real draft recovery, atomic submission, duplicate safety, authorization, email encryption/decryption, consent records, campaign aggregation/revocation, contact review, CSV exclusion, email-only withdrawal and complete deletion. It intentionally forces one database write to fail and verifies transaction rollback leaves no partial response/contact. It then drops **only its randomly generated disposable test database**, guarded against the configured app database. Production data is not modified by the suite.
+The optional integration suite uses a new `recallmd_test_<random>` Atlas database, a temporary localhost server on port 3101, and a disposable fake administrator/contact. It verifies real draft recovery, atomic submission, duplicate safety, authorization, email encryption/decryption, consent records, campaign aggregation/revocation, contact review, CSV exclusion, email-only withdrawal and complete deletion. It also rejects missing bot proof, honeypot spam and instant submissions, and verifies the persisted verification result. It intentionally forces one database write to fail and verifies transaction rollback leaves no partial response/contact. It then drops **only its randomly generated disposable test database**, guarded against the configured app database. Production data is not modified by the suite.
 
 A production database user should only have access to the application database. For live tests use a separate test Atlas user/cluster via optional `MONGODB_TEST_URI` with permission to create/drop the disposable database. Do not broaden a production account just to run tests. `INTEGRATION_PORT` can choose a free port.
 

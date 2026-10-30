@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { questions, questionById, SURVEY_VERSION, type Answers } from './survey-schema';
+import { botProofSchema } from './bot-contract';
 
 const answerSchema = z.object({ values: z.array(z.string().max(80)).max(20).optional(), other: z.string().trim().max(500).optional(), text: z.string().trim().max(4000).optional() }).strict();
 export function validateAnswers(answers: Answers, complete: boolean) {
@@ -38,6 +39,7 @@ export const finalSubmissionSchema = submissionSchema.superRefine((value,ctx)=>{
  if(value.emailOptIn && !z.email().safeParse(value.email).success) ctx.addIssue({code:'custom',path:['email'],message:'Enter an email for free subscription selection, or turn off the optional opt-in.'});
  if(!value.emailOptIn && value.email) ctx.addIssue({code:'custom',path:['emailOptIn'],message:'Please opt in before providing an email.'});
 });
+export const protectedSubmissionSchema = finalSubmissionSchema.safeExtend({ protection: botProofSchema });
 export type Submission = z.infer<typeof submissionSchema>;
 export const loginSchema = z.object({ email: z.email().max(254).transform(v => v.toLowerCase()), password: z.string().min(1).max(256) }).strict();
 export const withdrawalSchema = z.object({ receipt: z.string().uuid(), key: z.string().regex(/^[a-f0-9]{64}$/), action: z.enum(['response','email']).optional() }).strict();

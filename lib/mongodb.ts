@@ -3,7 +3,7 @@ import { MongoClient, type Db, type ClientSession } from 'mongodb';
 import { databaseEnv, responseRetentionDays } from './env';
 
 declare global { var recallMongo: Promise<MongoClient> | undefined; var recallIndexes: Promise<void> | undefined; var recallIndexKey:string|undefined; }
-export class DatabaseUnavailable extends Error { constructor() { super('The research database is currently unavailable. Please try again shortly.'); this.name = 'DatabaseUnavailable'; } }
+export class DatabaseUnavailable extends Error { constructor() { super('The research service is temporarily unavailable. Please try again shortly.'); this.name = 'DatabaseUnavailable'; } }
 export async function connectDatabase(): Promise<Db> {
   const env = databaseEnv();
   if (!global.recallMongo) {

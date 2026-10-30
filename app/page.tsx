@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, ArrowUpRight, BookOpen, Brain, CalendarDays, Check, CheckCheck, Clock3, FileText, Fingerprint, HeartHandshake, Layers3, LockKeyhole, Plus } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, BookOpen, Brain, CalendarDays, Check, CheckCheck, Clock3, FileText, Fingerprint, Gift, HeartHandshake, Layers3, LockKeyhole, Plus } from 'lucide-react';
 import { PublicHeader } from '@/components/public-header';
 import { Footer } from '@/components/footer';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ const areas = [
 export default function Home() {
  return <><PublicHeader /><main id="main">
   <section className="hero container">
-   <div className="hero-copy"><div className="eyebrow"><span className="status-dot" /> FOR MBBS STUDENTS & NEET-PG ASPIRANTS</div><h1>Help shape a better<br className="desktop-break" /> way to revise<br /><span>for NEET-PG.</span></h1><p className="hero-description">A 5–8 minute student survey about forgetting what you studied, keeping up with revision, and the tools you use. Tell us what’s difficult so we can build around real needs.</p><p className="hero-audience">We’re exploring a personalized revision assistant — and listening before we build.</p><div className="hero-actions"><Button asChild size="lg"><Link href="/survey">Start survey <ArrowRight size={18} /></Link></Button><span><Clock3 size={15} /> Just 5–8 minutes</span></div><div className="hero-footnote"><LockKeyhole size={13} /><span>No account needed. Email and campaign cookies are optional.</span></div></div>
+   <div className="hero-copy"><div className="eyebrow"><span className="status-dot" /> FOR MBBS STUDENTS & NEET-PG ASPIRANTS</div><h1>Help shape better<br /><span>NEET-PG revision.</span></h1><p className="hero-description">Tell us what makes revision difficult. Your 5–8 minutes of honest feedback will help shape a revision tool around real student needs.</p><div className="hero-benefit"><span className="hero-benefit-icon"><Gift size={24}/></span><div><h2>What’s in it for you?</h2><p>Selected respondents will be offered a <strong>free RecallMD subscription</strong> when the product becomes available.</p><span>Share genuine answers. Email is optional at the end. Selection isn’t guaranteed.</span><Link href="/terms">How selection works <ArrowUpRight size={14}/></Link></div></div><div className="hero-actions"><Button asChild size="lg"><Link href="/survey">Start survey <ArrowRight size={18} /></Link></Button><span><Clock3 size={15} /> Just 5–8 minutes</span></div><div className="hero-footnote"><LockKeyhole size={13} /><span>No account needed. Email and campaign cookies are optional.</span></div></div>
    <div className="hero-visual" aria-label="Research exploring the connection between learning, remembering, and revision">
     <div className="visual-grid" /><span className="visual-plus plus-one"><Plus size={19}/></span><span className="visual-plus plus-two"><Plus size={19}/></span>
     <div className="floating-label float-top"><span className="tiny-icon"><BookOpen size={15}/></span> A little reflection goes a long way.</div>

@@ -22,7 +22,7 @@ async function main() {
  client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000 }); await client.connect();
  const db = client.db(testName); const passwordHash = await hashPassword(password); const now=new Date();
  await db.collection('admin_users').insertOne({email:'integration@example.invalid',passwordHash,role:'admin',active:true,createdAt:now,updatedAt:now});
- server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(port)],{cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',MONGODB_URI:uri,MONGODB_DB_NAME:testName,AUTH_SECRET:randomBytes(48).toString('base64url'),APP_URL:origin,NEXT_DIST_DIR:'.next-integration'},stdio:['ignore','pipe','pipe']});
+ server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(port)],{cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',MONGODB_URI:uri,MONGODB_DB_NAME:testName,AUTH_SECRET:randomBytes(48).toString('base64url'),APP_URL:origin,NEXT_DIST_DIR:'.next-integration',NEXT_PUBLIC_TURNSTILE_SITE_KEY:'',TURNSTILE_SECRET_KEY:''},stdio:['ignore','pipe','pipe']});
  // Do not relay framework/driver logs, which may include hostnames or env paths.
  server.stdout?.resume();server.stderr?.resume();
  for(let i=0;i<120;i++){try{if((await fetch(origin)).ok)break;}catch{}if(i===119)throw new Error('Integration server did not start.');await new Promise(resolve=>setTimeout(resolve,500));}
@@ -43,13 +43,21 @@ async function main() {
  const recovered=await call('/api/survey/draft/current','GET',undefined,draftCookie);assert.equal(recovered.status,200);assert.equal((await recovered.json()).currentSection,3);
  const draftContact=await db.collection('survey_draft_contacts').findOne({});assert.ok(draftContact?.emailCiphertext);assert.ok(!JSON.stringify(draftContact).includes(payload.email));
  const saved=await db.collection('survey_drafts').findOne({});assert.equal(saved?.responses.q1.values[0],'q1_a1');assert.ok(saved?.expiresAt instanceof Date);
+ phase='bot checks and browser-bound submission ticket';
+ assert.equal((await call('/api/survey/submit','POST',payload,draftCookie)).status,422);
+ const challengeResponse=await call('/api/survey/protection','POST',{},draftCookie);assert.equal(challengeResponse.status,200);const challenge=await challengeResponse.json();assert.equal(challenge.mode,'basic');
+ const proof={ticket:challenge.ticket,website:''};
+ assert.equal((await call('/api/survey/submit','POST',{...payload,protection:{...proof,website:'https://bot.invalid'}},draftCookie)).status,403);
+ assert.equal(await db.collection('survey_responses').countDocuments({}),0);
+ if(challenge.readyInMs>0){assert.equal((await call('/api/survey/submit','POST',{...payload,protection:proof},draftCookie)).status,429);await new Promise(resolve=>setTimeout(resolve,challenge.readyInMs+150));}
+ const protectedPayload={...payload,protection:proof};
  phase='atomic submission and duplicate safety';
- const submission=await call('/api/survey/submit','POST',payload,`${draftCookie}; ${privacyCookie}`);assert.equal(submission.status,201);const receipt=await submission.json();
- const duplicate=await call('/api/survey/submit','POST',payload,`${draftCookie}; ${privacyCookie}`);assert.equal(duplicate.status,200);assert.equal((await duplicate.json()).receipt,receipt.receipt);assert.equal(await db.collection('survey_responses').countDocuments({}),1);
+ const submission=await call('/api/survey/submit','POST',protectedPayload,`${draftCookie}; ${privacyCookie}`);assert.equal(submission.status,201);const receipt=await submission.json();
+ const duplicate=await call('/api/survey/submit','POST',protectedPayload,`${draftCookie}; ${privacyCookie}`);assert.equal(duplicate.status,200);assert.equal((await duplicate.json()).receipt,receipt.receipt);assert.equal(await db.collection('survey_responses').countDocuments({}),1);
  assert.equal(await db.collection('early_access_contacts').countDocuments({}),1);assert.equal(await db.collection('consent_events').countDocuments({type:'survey_submission'}),1);assert.equal(await db.collection('survey_draft_contacts').countDocuments({}),0);
  const subscriptionContact=await db.collection('early_access_contacts').findOne({});assert.equal(subscriptionContact?.offerVersion,OFFER_VERSION);assert.equal(subscriptionContact?.offerTerms,EARLY_ACCESS_OFFER);assert.ok(subscriptionContact?.optedInAt instanceof Date);
  const recoveredReceipt=await call('/api/survey/draft/current','GET',undefined,draftCookie);assert.equal(recoveredReceipt.status,200);const privateDetails=await recoveredReceipt.json();assert.equal(privateDetails.receipt,receipt.receipt);assert.equal(privateDetails.withdrawalKey,receipt.withdrawalKey);
- const storedResponse=await db.collection('survey_responses').findOne({});assert.equal(storedResponse?.policyVersion,POLICY_VERSION);assert.equal(storedResponse?.attribution.firstTouch.source,'integration');assert.ok(!JSON.stringify(storedResponse).includes(payload.email));
+ const storedResponse=await db.collection('survey_responses').findOne({});assert.equal(storedResponse?.botProtection.method,'basic');assert.ok(storedResponse?.botProtection.verifiedAt instanceof Date);assert.ok(!JSON.stringify(storedResponse).includes(challenge.ticket));assert.equal(storedResponse?.policyVersion,POLICY_VERSION);assert.equal(storedResponse?.attribution.firstTouch.source,'integration');assert.ok(!JSON.stringify(storedResponse).includes(payload.email));
  phase='administrator access, contact review and exports';
  const login=await call('/api/admin/login','POST',{email:'integration@example.invalid',password});assert.equal(login.status,200);const adminCookie=cookieOf(login,'recallmd_admin');assert.ok(adminCookie);
  const analytics=await call('/api/admin/analytics','GET',undefined,adminCookie);assert.equal(analytics.status,200);const insight=await analytics.json();assert.equal(insight.total,1);assert.equal(insight.drafts,0);assert.equal(insight.completionRate,100);assert.ok(insight.charts.stages.length);assert.equal(insight.optIns,1);assert.equal(insight.charts.sources[0].name,'integration');
@@ -71,8 +79,10 @@ async function main() {
  phase='transaction rollback';
  const nextDraft=await call('/api/survey/draft','POST',{...payload,currentSection:6});assert.equal(nextDraft.status,200);const nextCookie=cookieOf(nextDraft,'recallmd_draft');assert.ok(nextCookie);
  await db.command({collMod:'consent_events',validator:{$jsonSchema:{required:['forcedFailureOnlyInDisposableIntegrationDatabase']}},validationLevel:'strict'});
- const failed=await call('/api/survey/submit','POST',payload,nextCookie);assert.equal(failed.status,500);assert.equal(await db.collection('survey_responses').countDocuments({}),0);assert.equal(await db.collection('early_access_contacts').countDocuments({}),0);assert.equal(await db.collection('survey_drafts').countDocuments({submittedAt:{$exists:true}}),0);
+ const nextProtectionResponse=await call('/api/survey/protection','POST',{},nextCookie);assert.equal(nextProtectionResponse.status,200);const nextProtection=await nextProtectionResponse.json();await new Promise(resolve=>setTimeout(resolve,nextProtection.readyInMs+150));
+ const failed=await call('/api/survey/submit','POST',{...payload,protection:{ticket:nextProtection.ticket,website:''}},nextCookie);assert.equal(failed.status,500);assert.equal(await db.collection('survey_responses').countDocuments({}),0);assert.equal(await db.collection('early_access_contacts').countDocuments({}),0);assert.equal(await db.collection('survey_drafts').countDocuments({submittedAt:{$exists:true}}),0);
  await db.command({collMod:'consent_events',validator:{},validationLevel:'strict'});
+ console.log('Bot protection verified: rejected missing proof, honeypot spam and instant submissions; persisted only the verification result.');
  console.log('Privacy integration verified: consent gating, encrypted email recovery, versioned acknowledgements, contact review, attribution removal, independent email withdrawal and real transaction rollback.');
  console.log('Integration verified: real Atlas draft recovery, submission/idempotency, admin login/logout, protected pages/APIs, analytics, listing/detail, CSV export, and withdrawal.');
 }
