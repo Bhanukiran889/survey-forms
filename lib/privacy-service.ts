@@ -23,7 +23,7 @@ export async function getPreference(db?:Db,session?:ClientSession) {
 }
 async function writeAttribution(db:Db,session:ClientSession,pref:PrivacyPreference,campaign:Campaign) {
  // Taking a write lock on the preference makes revocation and capture serialize.
- if(!pref.analytics)throw new HttpError(403,'TRACKING_NOT_ALLOWED','Optional campaign cookies have not been accepted.');
+ if(!pref.analytics)throw new HttpError(403,'TRACKING_NOT_ALLOWED','campaign cookies have not been accepted.');
  const now=new Date(); await db.collection<PrivacyPreference>('privacy_preferences').updateOne({_id:pref._id},{$set:{lastCaptureAt:now}},{session});
  const col=db.collection<CampaignAttribution>('campaign_attribution');
  const previous=await col.findOne({preferenceId:pref.preferenceId,expiresAt:{$gt:now}},{session});
