@@ -15,8 +15,20 @@ export function PrivacyProvider({ children }: { children: React.ReactNode }) {
     const pathname = usePathname(); const [preference, setPreference] = useState<Preference | null>(null), [open, setOpen] = useState(false), [analytics, setAnalytics] = useState(false), [error, setError] = useState(''); const captured = useRef(''); const saveRequest = useRef(0); const pendingPreference = useRef(false);
     useEffect(() => { let active = true; api<Preference>('/api/privacy/preferences').then(p => { if (active) { setPreference(p); setAnalytics(p.analytics); } }, () => { if (active) setPreference({ decided: false, analytics: false, policyVersion: POLICY_VERSION }); }); return () => { active = false; }; }, []);
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const fromUrl = campaignFromSearch(window.location.search);
+        if (fromUrl) {
+            try { sessionStorage.setItem('recallmd_pending_campaign', JSON.stringify(fromUrl)); } catch {}
+        }
         if (pendingPreference.current || !preference?.decided || !preference.analytics || pathname.startsWith('/admin')) return;
-        const campaign = campaignFromSearch(window.location.search); if (!campaign) return;
+        let campaign = fromUrl;
+        if (!campaign) {
+            try {
+                const stored = sessionStorage.getItem('recallmd_pending_campaign');
+                if (stored) campaign = JSON.parse(stored);
+            } catch {}
+        }
+        if (!campaign) return;
         const identity = JSON.stringify(campaign); if (captured.current === identity) return;
         captured.current = identity;
         api('/api/privacy/attribution', { method: 'POST', body: identity }).catch(() => { captured.current = ''; });
@@ -26,7 +38,13 @@ export function PrivacyProvider({ children }: { children: React.ReactNode }) {
         const previousPreference = preference;
         const previousAnalytics = analytics;
         const wasOpen = open;
-        const campaign = value ? campaignFromSearch(window.location.search) : undefined;
+        let campaign = value ? campaignFromSearch(window.location.search) : undefined;
+        if (value && !campaign && typeof window !== 'undefined') {
+            try {
+                const stored = sessionStorage.getItem('recallmd_pending_campaign');
+                if (stored) campaign = JSON.parse(stored);
+            } catch {}
+        }
         pendingPreference.current = true;
         setError('');
         setPreference({ decided: true, analytics: value, policyVersion: POLICY_VERSION });
